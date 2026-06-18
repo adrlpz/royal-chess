@@ -582,7 +582,7 @@ pub struct CreateMatchSpl<'info> {
         token::mint = bet_mint,
         token::authority = player1,
     )]
-    pub player1_ata: Account<'info, TokenAccount>,
+    pub player1_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -590,9 +590,9 @@ pub struct CreateMatchSpl<'info> {
         associated_token::mint = bet_mint,
         associated_token::authority = escrow_vault,
     )]
-    pub escrow_vault_ata: Account<'info, TokenAccount>,
+    pub escrow_vault_ata: Box<Account<'info, TokenAccount>>,
 
-    pub bet_mint: Account<'info, anchor_spl::token::Mint>,
+    pub bet_mint: Box<Account<'info, anchor_spl::token::Mint>>,
 
     #[account(mut)]
     pub player1: Signer<'info>,
@@ -647,14 +647,14 @@ pub struct JoinMatchSpl<'info> {
         token::mint = match_account.bet_mint,
         token::authority = player2,
     )]
-    pub player2_ata: Account<'info, TokenAccount>,
+    pub player2_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
         token::mint = match_account.bet_mint,
         token::authority = escrow_vault,
     )]
-    pub escrow_vault_ata: Account<'info, TokenAccount>,
+    pub escrow_vault_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub player2: Signer<'info>,
@@ -698,9 +698,9 @@ pub struct SettleMatch<'info> {
     pub treasury: AccountInfo<'info>,
 
     // SPL accounts (optional — None for native SOL settlement)
-    pub escrow_vault_ata: Option<Account<'info, TokenAccount>>,
-    pub winner_ata: Option<Account<'info, TokenAccount>>,
-    pub treasury_ata: Option<Account<'info, TokenAccount>>,
+    pub escrow_vault_ata: Option<Box<Account<'info, TokenAccount>>>,
+    pub winner_ata: Option<Box<Account<'info, TokenAccount>>>,
+    pub treasury_ata: Option<Box<Account<'info, TokenAccount>>>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -734,8 +734,8 @@ pub struct CancelMatch<'info> {
     pub state: Account<'info, EscrowState>,
 
     // SPL accounts (optional)
-    pub escrow_vault_ata: Option<Account<'info, TokenAccount>>,
-    pub player_ata: Option<Account<'info, TokenAccount>>,
+    pub escrow_vault_ata: Option<Box<Account<'info, TokenAccount>>>,
+    pub player_ata: Option<Box<Account<'info, TokenAccount>>>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -777,9 +777,9 @@ pub struct RefundMatch<'info> {
     pub state: Account<'info, EscrowState>,
 
     // SPL accounts (optional)
-    pub escrow_vault_ata: Option<Account<'info, TokenAccount>>,
-    pub player1_ata: Option<Account<'info, TokenAccount>>,
-    pub player2_ata: Option<Account<'info, TokenAccount>>,
+    pub escrow_vault_ata: Option<Box<Account<'info, TokenAccount>>>,
+    pub player1_ata: Option<Box<Account<'info, TokenAccount>>>,
+    pub player2_ata: Option<Box<Account<'info, TokenAccount>>>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
