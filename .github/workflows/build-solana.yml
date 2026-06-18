@@ -21,6 +21,14 @@ jobs:
       - name: Install Rust 1.79
         uses: dtolnay/rust-toolchain@1.79.0
 
+      - name: Register Solana Rust toolchain
+        run: |
+          SOLANA_RUST="$HOME/.local/share/solana/install/active_release/bin/platform-tools-sdk/sbf/dependencies/rust"
+          if [ -d "$SOLANA_RUST" ]; then
+            rustup toolchain link solana "$SOLANA_RUST"
+            echo "Solana Rust registered: $(cargo +solana --version 2>/dev/null || echo 'not available')"
+          fi
+
       - name: Install Anchor CLI (locked deps)
         run: |
           cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli --locked
@@ -29,6 +37,24 @@ jobs:
         run: |
           solana config set --url devnet
           solana-keygen new --no-bip39-passphrase --force --outfile ~/.config/solana/id.json
+
+      - name: Fix Cargo.lock for Solana Rust 1.79 compatibility
+        working-directory: packages/contracts/solana
+        run: |
+          rm -f Cargo.lock
+          # Generate lockfile with standard Rust
+          cargo generate-lockfile
+          # Pin all edition2024 crates to Rust 1.79 compatible versions
+          cargo update -p blake3 --precise 1.6.0 || true
+          cargo update -p unicode-segmentation --precise 1.12.0 || true
+          cargo update -p zeroize_derive --precise 1.4.2 || true
+          cargo update -p proc-macro-crate@3.5.0 --precise 3.2.0 || true
+          cargo update -p wit-bindgen --precise 0.36.0 || true
+          echo "=== Pinned versions ==="
+          for pkg in blake3 block-buffer indexmap wit-bindgen unicode-segmentation zeroize_derive; do
+            ver=$(grep -A2 "name = \"$pkg\"" Cargo.lock | grep "version" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            echo "  $pkg = $ver"
+          done
 
       - name: Build program
         working-directory: packages/contracts/solana
