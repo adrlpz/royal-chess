@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  walletAddress String   @unique @map("wallet_address")
+  username      String?  @unique
+  elo           Int      @default(1200)
+  wins          Int      @default(0)
+  losses        Int      @default(0)
+  draws         Int      @default(0)
+  totalEarnings Decimal  @default(0) @map("total_earnings") @db.Decimal(20, 8)
+  totalBets     Decimal  @default(0) @map("total_bets") @db.Decimal(20, 8)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  matchesAsP1 Match[] @relation("Player1")
+  matchesAsP2 Match[] @relation("Player2")
+
+  @@map("users")
+}
+
+model Match {
+  id              String      @id @default(uuid())
+  matchHash       String      @unique @map("match_hash")
+  player1Id       String      @map("player1_id")
+  player2Id       String?     @map("player2_id")
+  chain           Chain
+  token           String
+  betAmount       Decimal     @map("bet_amount") @db.Decimal(20, 8)
+  totalPot        Decimal     @map("total_pot") @db.Decimal(20, 8)
+  platformFee     Decimal     @map("platform_fee") @db.Decimal(20, 8)
+  status          MatchStatus @default(PENDING)
+  timeControl     String      @map("time_control")
+  timeBase        Int         @map("time_base")     // seconds
+  timeIncrement   Int         @map("time_increment") // seconds
+  fen             String      @default("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+  pgn             String      @default("")
+  moveCount       Int         @default(0) @map("move_count")
+  winnerId        String?     @map("winner_id")
+  result          GameResult?
+  contractMatchId String?     @map("contract_match_id")  // on-chain match ID
+  txHashDeposit   String?     @map("tx_hash_deposit")
+  txHashSettle    String?     @map("tx_hash_settle")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  startedAt       DateTime?   @map("started_at")
+  endedAt         DateTime?   @map("ended_at")
+
+  player1 User @relation("Player1", fields: [player1Id], references: [id])
+  player2 User? @relation("Player2", fields: [player2Id], references: [id])
+  moves   Move[]
+
+  @@index([status])
+  @@index([player1Id])
+  @@index([player2Id])
+  @@map("matches")
+}
+
+model Move {
+  id        String   @id @default(uuid())
+  matchId   String   @map("match_id")
+  moveNumber Int     @map("move_number")
+  color     String   // "w" or "b"
+  from      String   // e.g. "e2"
+  to        String   // e.g. "e4"
+  san       String   // e.g. "e4" or "Nf3"
+  fen       String   // FEN after this move
+  timeSpent Int      @default(0) @map("time_spent") // ms spent on this move
+  createdAt DateTime @default(now()) @map("created_at")
+
+  match Match @relation(fields: [matchId], references: [id])
+
+  @@index([matchId, moveNumber])
+  @@map("moves")
+}
+
+enum Chain {
+  BASE
+  BSC
+  SOLANA
+}
+
+enum MatchStatus {
+  PENDING       // waiting for opponent to join + deposit
+  DEPOSITING    // both players need to deposit
+  ACTIVE        // game in progress
+  COMPLETED     // game ended, settlement done
+  CANCELLED     // cancelled before game started
+  DRAW          // draw, both refunded
+  TIMEOUT       // abandoned
+}
+
+enum GameResult {
+  CHECKMATE
+  RESIGN
+  TIMEOUT
+  STALEMATE
+  REPETITION
+  FIFTY_MOVE
+  INSUFFICIENT_MATERIAL
+  AGREED_DRAW
+}

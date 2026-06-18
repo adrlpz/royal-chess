@@ -1,0 +1,20 @@
+{
+  "name": "royal-chess",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Royal Chess — Online PvP Chess with Crypto Betting on Base, BNB Chain & Solana",
+  "scripts": {
+    "dev": "pnpm --filter @royalchess/backend dev & pnpm --filter @royalchess/frontend dev",
+    "dev:backend": "pnpm --filter @royalchess/backend dev",
+    "dev:frontend": "pnpm --filter @royalchess/frontend dev",
+    "build": "pnpm --filter @royalchess/contracts build && pnpm --filter @royalchess/backend build && pnpm --filter @royalchess/frontend build",
+    "test": "pnpm --filter @royalchess/contracts test",
+    "lint": "eslint packages/*/src/**/*.{ts,tsx}",
+    "clean": "pnpm -r exec rm -rf node_modules dist .next"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

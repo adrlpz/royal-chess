@@ -1,0 +1,39 @@
+{
+  "name": "@royalchess/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.0",
+    "@solana/wallet-adapter-base": "^0.9.23",
+    "@solana/wallet-adapter-phantom": "^0.9.24",
+    "@solana/wallet-adapter-react": "^0.15.35",
+    "@solana/wallet-adapter-react-ui": "^0.9.35",
+    "@solana/wallet-adapter-solflare": "^0.6.28",
+    "@solana/web3.js": "^1.95.0",
+    "chess.js": "^1.0.0",
+    "chessboardjsx": "^2.4.7",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "siwe": "^2.3.2",
+    "socket.io-client": "^4.8.0",
+    "viem": "^2.21.0",
+    "wagmi": "^2.14.0",
+    "@tanstack/react-query": "^5.60.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.5.0"
+  }
+}
