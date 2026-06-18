@@ -6,10 +6,8 @@ declare_id!("47oFrH5ePiNvnXCpKy7jR7ghcqC747RLw6QLsr9bkMx4");
 
 // ─── Constants ──────────────────────────────────────────────────────
 const FEE_BPS_DENOM: u64 = 10_000;
-const DEFAULT_FEE_BPS: u64 = 500; // 5%
-const MAX_FEE_BPS: u64 = 1_000;   // 10%
+const MAX_FEE_BPS: u64 = 1_000; // 10%
 const DEPOSIT_DEADLINE_SECS: i64 = 300; // 5 minutes
-const GAME_TIMEOUT_SECS: i64 = 86_400;  // 24 hours
 
 // ─── Program ────────────────────────────────────────────────────────
 #[program]
@@ -17,10 +15,7 @@ pub mod royal_chess_escrow {
     use super::*;
 
     /// Initialize the global escrow state (once per program deploy).
-    pub fn initialize(
-        ctx: Context<Initialize>,
-        fee_rate_bps: u64,
-    ) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, fee_rate_bps: u64) -> Result<()> {
         require!(fee_rate_bps <= MAX_FEE_BPS, EscrowError::FeeTooHigh);
 
         let state = &mut ctx.accounts.state;
@@ -150,10 +145,7 @@ pub mod royal_chess_escrow {
     }
 
     /// Join an existing match with native SOL.
-    pub fn join_match_sol(
-        ctx: Context<JoinMatchSol>,
-        bet_amount: u64,
-    ) -> Result<()> {
+    pub fn join_match_sol(ctx: Context<JoinMatchSol>, bet_amount: u64) -> Result<()> {
         let clock = Clock::get()?;
         let m = &mut ctx.accounts.match_account;
 
@@ -190,10 +182,7 @@ pub mod royal_chess_escrow {
     }
 
     /// Join an existing match with SPL token.
-    pub fn join_match_spl(
-        ctx: Context<JoinMatchSpl>,
-        bet_amount: u64,
-    ) -> Result<()> {
+    pub fn join_match_spl(ctx: Context<JoinMatchSpl>, bet_amount: u64) -> Result<()> {
         let clock = Clock::get()?;
         let m = &mut ctx.accounts.match_account;
 
@@ -228,10 +217,7 @@ pub mod royal_chess_escrow {
 
     /// Settle match — only authority (backend) can call.
     /// Sends 95% to winner, 5% to treasury.
-    pub fn settle_match(
-        ctx: Context<SettleMatch>,
-        winner: Pubkey,
-    ) -> Result<()> {
+    pub fn settle_match(ctx: Context<SettleMatch>, winner: Pubkey) -> Result<()> {
         let m = &mut ctx.accounts.match_account;
         require!(
             m.status == MatchStatus::Funded || m.status == MatchStatus::InProgress,
@@ -242,25 +228,44 @@ pub mod royal_chess_escrow {
             EscrowError::InvalidWinner
         );
 
-        let payout = m.total_pot.checked_sub(m.platform_fee).ok_or(EscrowError::Overflow)?;
+        let payout = m
+            .total_pot
+            .checked_sub(m.platform_fee)
+            .ok_or(EscrowError::Overflow)?;
         let fee = m.platform_fee;
 
         if m.is_spl {
-            // SPL token settlement
-            let seeds = &[
+            // SPL token settlement — must have all SPL accounts
+            let escrow_vault_ata = ctx
+                .accounts
+                .escrow_vault_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
+            let winner_ata = ctx
+                .accounts
+                .winner_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
+            let treasury_ata = ctx
+                .accounts
+                .treasury_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
+
+            let seeds: &[&[u8]] = &[
                 b"escrow".as_ref(),
                 m.match_id.as_ref(),
                 &[m.escrow_bump],
             ];
-            let signer_seeds = &[&seeds[..]];
+            let signer_seeds = &[seeds];
 
             // Pay winner
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
-                        from: ctx.accounts.escrow_vault_ata.to_account_info(),
-                        to: ctx.accounts.winner_ata.to_account_info(),
+                        from: escrow_vault_ata.to_account_info(),
+                        to: winner_ata.to_account_info(),
                         authority: ctx.accounts.escrow_vault.to_account_info(),
                     },
                     signer_seeds,
@@ -274,8 +279,8 @@ pub mod royal_chess_escrow {
                     CpiContext::new_with_signer(
                         ctx.accounts.token_program.to_account_info(),
                         Transfer {
-                            from: ctx.accounts.escrow_vault_ata.to_account_info(),
-                            to: ctx.accounts.treasury_ata.to_account_info(),
+                            from: escrow_vault_ata.to_account_info(),
+                            to: treasury_ata.to_account_info(),
                             authority: ctx.accounts.escrow_vault.to_account_info(),
                         },
                         signer_seeds,
@@ -284,21 +289,18 @@ pub mod royal_chess_escrow {
                 )?;
             }
         } else {
-            // Native SOL settlement
-            let escrow_lamports = ctx.accounts.escrow_vault.lamports();
-            let vault_seeds: &[&[u8]] = &[
-                b"escrow".as_ref(),
-                m.match_id.as_ref(),
-                &[m.escrow_bump],
-            ];
-
-            // Transfer payout to winner
-            **ctx.accounts.escrow_vault.try_borrow_mut_lamports()? -= payout;
+            // Native SOL settlement — direct lamport manipulation
+            **ctx
+                .accounts
+                .escrow_vault
+                .try_borrow_mut_lamports()? -= payout;
             **ctx.accounts.winner.try_borrow_mut_lamports()? += payout;
 
-            // Transfer fee to treasury
             if fee > 0 {
-                **ctx.accounts.escrow_vault.try_borrow_mut_lamports()? -= fee;
+                **ctx
+                    .accounts
+                    .escrow_vault
+                    .try_borrow_mut_lamports()? -= fee;
                 **ctx.accounts.treasury.try_borrow_mut_lamports()? += fee;
             }
         }
@@ -319,32 +321,49 @@ pub mod royal_chess_escrow {
     pub fn cancel_match(ctx: Context<CancelMatch>) -> Result<()> {
         let m = &mut ctx.accounts.match_account;
         require!(
-            ctx.accounts.caller.key() == m.player_1 || ctx.accounts.caller.key() == ctx.accounts.state.authority,
+            ctx.accounts.caller.key() == m.player_1
+                || ctx.accounts.caller.key() == ctx.accounts.state.authority,
             EscrowError::NotAuthorized
         );
         require!(m.status == MatchStatus::Created, EscrowError::CannotCancel);
         require!(m.player_2 == Pubkey::default(), EscrowError::AlreadyJoined);
 
         if m.is_spl {
-            let seeds = &[
+            let escrow_vault_ata = ctx
+                .accounts
+                .escrow_vault_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
+            let player_ata = ctx
+                .accounts
+                .player_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
+
+            let seeds: &[&[u8]] = &[
                 b"escrow".as_ref(),
                 m.match_id.as_ref(),
                 &[m.escrow_bump],
             ];
+            let signer_seeds = &[seeds];
+
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
-                        from: ctx.accounts.escrow_vault_ata.to_account_info(),
-                        to: ctx.accounts.player_ata.to_account_info(),
+                        from: escrow_vault_ata.to_account_info(),
+                        to: player_ata.to_account_info(),
                         authority: ctx.accounts.escrow_vault.to_account_info(),
                     },
-                    &seeds.iter().collect::<Vec<_>>(),
+                    signer_seeds,
                 ),
                 m.bet_amount,
             )?;
         } else {
-            **ctx.accounts.escrow_vault.try_borrow_mut_lamports()? -= m.bet_amount;
+            **ctx
+                .accounts
+                .escrow_vault
+                .try_borrow_mut_lamports()? -= m.bet_amount;
             **ctx.accounts.caller.try_borrow_mut_lamports()? += m.bet_amount;
         }
 
@@ -361,62 +380,84 @@ pub mod royal_chess_escrow {
     pub fn refund_match(ctx: Context<RefundMatch>, reason: String) -> Result<()> {
         let m = &mut ctx.accounts.match_account;
         require!(
-            m.status == MatchStatus::Created ||
-            m.status == MatchStatus::Funded ||
-            m.status == MatchStatus::InProgress,
+            m.status == MatchStatus::Created
+                || m.status == MatchStatus::Funded
+                || m.status == MatchStatus::InProgress,
             EscrowError::NotRefundable
         );
 
         let is_authority = ctx.accounts.caller.key() == ctx.accounts.state.authority;
-        let is_expired_player1 = ctx.accounts.caller.key() == m.player_1
-            && m.status == MatchStatus::Created;
+        let is_expired_player1 =
+            ctx.accounts.caller.key() == m.player_1 && m.status == MatchStatus::Created;
 
         require!(is_authority || is_expired_player1, EscrowError::NotAuthorized);
 
         if m.is_spl {
-            let seeds = &[
+            let escrow_vault_ata = ctx
+                .accounts
+                .escrow_vault_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
+
+            let seeds: &[&[u8]] = &[
                 b"escrow".as_ref(),
                 m.match_id.as_ref(),
                 &[m.escrow_bump],
             ];
-            let signer = &seeds.iter().collect::<Vec<_>>();
+            let signer_seeds = &[seeds];
 
             // Refund player 1
+            let player1_ata = ctx
+                .accounts
+                .player1_ata
+                .as_ref()
+                .ok_or(EscrowError::MissingSplAccount)?;
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
-                        from: ctx.accounts.escrow_vault_ata.to_account_info(),
-                        to: ctx.accounts.player1_ata.to_account_info(),
+                        from: escrow_vault_ata.to_account_info(),
+                        to: player1_ata.to_account_info(),
                         authority: ctx.accounts.escrow_vault.to_account_info(),
                     },
-                    signer,
+                    signer_seeds,
                 ),
                 m.bet_amount,
             )?;
 
             // Refund player 2 if deposited
             if m.player_2 != Pubkey::default() {
+                let player2_ata = ctx
+                    .accounts
+                    .player2_ata
+                    .as_ref()
+                    .ok_or(EscrowError::MissingSplAccount)?;
                 token::transfer(
                     CpiContext::new_with_signer(
                         ctx.accounts.token_program.to_account_info(),
                         Transfer {
-                            from: ctx.accounts.escrow_vault_ata.to_account_info(),
-                            to: ctx.accounts.player2_ata.to_account_info(),
+                            from: escrow_vault_ata.to_account_info(),
+                            to: player2_ata.to_account_info(),
                             authority: ctx.accounts.escrow_vault.to_account_info(),
                         },
-                        signer,
+                        signer_seeds,
                     ),
                     m.bet_amount,
                 )?;
             }
         } else {
-            // SOL refund
-            **ctx.accounts.escrow_vault.try_borrow_mut_lamports()? -= m.bet_amount;
+            // SOL refund — direct lamport manipulation
+            **ctx
+                .accounts
+                .escrow_vault
+                .try_borrow_mut_lamports()? -= m.bet_amount;
             **ctx.accounts.player1.try_borrow_mut_lamports()? += m.bet_amount;
 
             if m.player_2 != Pubkey::default() {
-                **ctx.accounts.escrow_vault.try_borrow_mut_lamports()? -= m.bet_amount;
+                **ctx
+                    .accounts
+                    .escrow_vault
+                    .try_borrow_mut_lamports()? -= m.bet_amount;
                 **ctx.accounts.player2.try_borrow_mut_lamports()? += m.bet_amount;
             }
         }
@@ -440,10 +481,7 @@ pub mod royal_chess_escrow {
     }
 
     /// Update global fee rate (authority only).
-    pub fn update_fee_rate(
-        ctx: Context<AuthorityAction>,
-        new_rate_bps: u64,
-    ) -> Result<()> {
+    pub fn update_fee_rate(ctx: Context<AuthorityAction>, new_rate_bps: u64) -> Result<()> {
         require!(new_rate_bps <= MAX_FEE_BPS, EscrowError::FeeTooHigh);
         let state = &mut ctx.accounts.state;
         state.fee_rate_bps = new_rate_bps;
@@ -500,6 +538,13 @@ pub struct CreateMatchSol<'info> {
     )]
     pub escrow_vault: AccountInfo<'info>,
 
+    #[account(
+        mut,
+        seeds = [b"state"],
+        bump = state.bump,
+    )]
+    pub state: Account<'info, EscrowState>,
+
     #[account(mut)]
     pub player1: Signer<'info>,
 
@@ -524,6 +569,13 @@ pub struct CreateMatchSpl<'info> {
         bump,
     )]
     pub escrow_vault: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"state"],
+        bump = state.bump,
+    )]
+    pub state: Account<'info, EscrowState>,
 
     #[account(
         mut,
@@ -621,6 +673,8 @@ pub struct SettleMatch<'info> {
     pub match_account: Account<'info, MatchAccount>,
 
     #[account(
+        seeds = [b"state"],
+        bump = state.bump,
         constraint = state.authority == authority.key() @ EscrowError::NotAuthorized
     )]
     pub state: Account<'info, EscrowState>,
@@ -643,7 +697,7 @@ pub struct SettleMatch<'info> {
     #[account(mut, address = state.treasury @ EscrowError::InvalidTreasury)]
     pub treasury: AccountInfo<'info>,
 
-    // SPL accounts (optional — passed as dummy for native SOL)
+    // SPL accounts (optional — None for native SOL settlement)
     pub escrow_vault_ata: Option<Account<'info, TokenAccount>>,
     pub winner_ata: Option<Account<'info, TokenAccount>>,
     pub treasury_ata: Option<Account<'info, TokenAccount>>,
@@ -673,6 +727,10 @@ pub struct CancelMatch<'info> {
     #[account(mut)]
     pub caller: AccountInfo<'info>,
 
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+    )]
     pub state: Account<'info, EscrowState>,
 
     // SPL accounts (optional)
@@ -712,6 +770,10 @@ pub struct RefundMatch<'info> {
     #[account(mut)]
     pub player2: AccountInfo<'info>,
 
+    #[account(
+        seeds = [b"state"],
+        bump = state.bump,
+    )]
     pub state: Account<'info, EscrowState>,
 
     // SPL accounts (optional)
@@ -726,6 +788,8 @@ pub struct RefundMatch<'info> {
 #[derive(Accounts)]
 pub struct AuthorityAction<'info> {
     #[account(
+        seeds = [b"state"],
+        bump = state.bump,
         constraint = state.authority == authority.key() @ EscrowError::NotAuthorized
     )]
     pub state: Account<'info, EscrowState>,
@@ -745,30 +809,30 @@ pub struct AuthorityAction<'info> {
 #[account]
 #[derive(InitSpace)]
 pub struct EscrowState {
-    pub authority: Pubkey,    // 32
-    pub treasury: Pubkey,     // 32
-    pub fee_rate_bps: u64,    // 8
-    pub paused: bool,         // 1
-    pub match_counter: u64,   // 8
-    pub bump: u8,             // 1
+    pub authority: Pubkey,   // 32
+    pub treasury: Pubkey,    // 32
+    pub fee_rate_bps: u64,   // 8
+    pub paused: bool,        // 1
+    pub match_counter: u64,  // 8
+    pub bump: u8,            // 1
 }
 
 #[account]
 #[derive(InitSpace)]
 pub struct MatchAccount {
-    pub match_id: [u8; 32],       // 32
-    pub player_1: Pubkey,         // 32
-    pub player_2: Pubkey,         // 32
-    pub is_spl: bool,             // 1
-    pub bet_mint: Pubkey,         // 32
-    pub bet_amount: u64,          // 8
-    pub total_pot: u64,           // 8
-    pub platform_fee: u64,        // 8
-    pub status: MatchStatus,      // 1
-    pub created_at: i64,          // 8
-    pub deposit_deadline: i64,    // 8
-    pub escrow_bump: u8,          // 1
-    pub bump: u8,                 // 1
+    pub match_id: [u8; 32],     // 32
+    pub player_1: Pubkey,       // 32
+    pub player_2: Pubkey,       // 32
+    pub is_spl: bool,           // 1
+    pub bet_mint: Pubkey,       // 32
+    pub bet_amount: u64,        // 8
+    pub total_pot: u64,         // 8
+    pub platform_fee: u64,      // 8
+    pub status: MatchStatus,    // 1
+    pub created_at: i64,        // 8
+    pub deposit_deadline: i64,  // 8
+    pub escrow_bump: u8,        // 1
+    pub bump: u8,               // 1
 }
 
 // ─── Enums ──────────────────────────────────────────────────────────
@@ -856,4 +920,6 @@ pub enum EscrowError {
     InvalidTreasury,
     #[msg("Match cannot be started")]
     NotStartable,
+    #[msg("Missing SPL token account")]
+    MissingSplAccount,
 }
