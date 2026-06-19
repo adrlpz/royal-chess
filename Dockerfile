@@ -19,13 +19,13 @@ FROM deps AS frontend-build
 COPY packages/frontend/ ./packages/frontend/
 RUN cd packages/frontend && ./node_modules/.bin/next build
 
-# ─── Backend Runtime (tsx — no tsc needed) ───────────────────────
+# ─── Backend Runtime ────────────────────────────────────────────
 FROM base AS backend
 RUN corepack enable && corepack prepare pnpm@9 --activate
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=prisma-gen /app/node_modules ./node_modules
-COPY --from=prisma-gen /app/packages/backend/node_modules ./packages/backend/node_modules 2>/dev/null || true
+COPY --from=prisma-gen /app/packages/backend/node_modules ./packages/backend/node_modules
 COPY packages/backend/ ./packages/backend/
 EXPOSE 3001
 CMD ["sh", "-c", "cd packages/backend && npx prisma db push --skip-generate && npx tsx src/index.ts"]
