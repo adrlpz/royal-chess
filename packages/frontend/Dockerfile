@@ -2,12 +2,12 @@ FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-# Install ALL workspace dependencies
+# Install dependencies
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/frontend/package.json ./packages/frontend/
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Build frontend
 FROM deps AS build

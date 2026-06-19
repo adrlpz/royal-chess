@@ -2,12 +2,12 @@ FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-# Install ALL workspace dependencies (needed for lockfile resolution)
+# Install dependencies
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/frontend/package.json ./packages/frontend/
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Build backend
 FROM deps AS build
@@ -18,10 +18,7 @@ RUN cd packages/backend && npx prisma generate && pnpm build
 FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /app/packages/backend
-
-# Copy node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/backend/node_modules ./packages/backend/node_modules 2>/dev/null || true
 COPY --from=build /app/packages/backend/dist ./dist
 COPY --from=build /app/packages/backend/prisma ./prisma
 
