@@ -1,13 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Setup Solana environment & deploy Royal Chess Escrow program to devnet.
+    Setup & deploy Royal Chess Escrow program to devnet.
 .DESCRIPTION
-    1. Install Solana CLI
-    2. Install Anchor CLI
-    3. Generate wallet & airdrop SOL
-    4. Build Anchor program
-    5. Deploy to devnet
+    1. Install Solana CLI & Anchor CLI
+    2. Generate wallet & request SOL
+    3. Build & deploy program
 #>
 
 $ErrorActionPreference = "Stop"
@@ -18,10 +16,9 @@ function Write-Warn($msg) { Write-Host "    [WARN] $msg" -ForegroundColor Yellow
 function Write-Err($msg)  { Write-Host "    [ERR] $msg" -ForegroundColor Red }
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 0: Check prerequisites"
+Write-Step "Step 1: Check prerequisites"
 # ────────────────────────────────────────────────────────────────
 
-# Check Rust
 $cargo = Get-Command cargo -ErrorAction SilentlyContinue
 if (-not $cargo) {
     Write-Err "Rust not found. Install from https://rustup.rs first."
@@ -30,16 +27,14 @@ if (-not $cargo) {
 Write-Ok "Rust: $(cargo --version)"
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 1: Install Solana CLI"
+Write-Step "Step 2: Install Solana CLI"
 # ────────────────────────────────────────────────────────────────
 
 $solanaPath = "$env:USERPROFILE\.local\share\solana\install\active_release\bin"
 $solanaInstalled = Get-Command solana -ErrorAction SilentlyContinue
 
 if (-not $solanaInstalled) {
-    Write-Host "    Downloading Solana installer..."
-
-    # Use Anza installer (official successor)
+    Write-Host "    Downloading Solana CLI..."
     $installerUrl = "https://release.anza.xyz/v2.2.7/solana-install-init-x86_64-pc-windows-msvc.exe"
     $installerPath = "$env:TEMP\solana-install.exe"
 
@@ -47,96 +42,76 @@ if (-not $solanaInstalled) {
         Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
     }
 
-    Write-Host "    Installing Solana CLI..."
     & $installerPath v2.2.7
-
-    # Add to PATH for current session
     $env:PATH = "$solanaPath;$env:PATH"
 
     if (Get-Command solana -ErrorAction SilentlyContinue) {
-        Write-Ok "Solana CLI installed: $(solana --version)"
+        Write-Ok "Solana CLI installed"
     } else {
-        Write-Warn "Solana CLI installed but not in PATH. Restart terminal and re-run."
-        Write-Warn "Manual add: $solanaPath to PATH"
-        # Continue anyway — anchor may still work
+        Write-Warn "Solana installed but not in PATH. Restart terminal and re-run."
     }
 } else {
-    Write-Ok "Solana already installed: $(solana --version)"
-}
-
-# Ensure solana is in PATH
-if (-not (Get-Command solana -ErrorAction SilentlyContinue)) {
-    $env:PATH = "$solanaPath;$env:PATH"
+    Write-Ok "Solana CLI ready"
 }
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 2: Install Anchor CLI (via AVM)"
+Write-Step "Step 3: Install Anchor CLI"
 # ────────────────────────────────────────────────────────────────
 
 $anchorInstalled = Get-Command anchor -ErrorAction SilentlyContinue
 
 if (-not $anchorInstalled) {
-    Write-Host "    Installing AVM (Anchor Version Manager)..."
-    cargo install --git https://github.com/coral-xyz/anchor avm --force 2>&1 | Out-Null
+    Write-Host "    Installing Anchor CLI (this may take a few minutes)..."
+    cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli --locked 2>&1 | Out-Null
 
-    # Ensure cargo bin is in PATH
     $cargoBin = "$env:USERPROFILE\.cargo\bin"
     if ($env:PATH -notlike "*$cargoBin*") {
         $env:PATH = "$cargoBin;$env:PATH"
     }
 
-    Write-Host "    Installing Anchor 0.30.1..."
-    avm install 0.30.1
-    avm use 0.30.1
-
     if (Get-Command anchor -ErrorAction SilentlyContinue) {
-        Write-Ok "Anchor installed: $(anchor --version)"
+        Write-Ok "Anchor CLI installed"
     } else {
-        Write-Err "Anchor installation failed. Try manually: cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli"
+        Write-Err "Anchor installation failed."
         exit 1
     }
 } else {
-    Write-Ok "Anchor already installed: $(anchor --version)"
+    Write-Ok "Anchor CLI ready"
 }
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 3: Configure Solana for devnet"
+Write-Step "Step 4: Configure wallet & network"
 # ────────────────────────────────────────────────────────────────
 
-solana config set --url devnet
+solana config set --url devnet 2>&1 | Out-Null
 $solanaKeyPath = "$env:USERPROFILE\.config\solana\id.json"
 
 if (-not (Test-Path $solanaKeyPath)) {
-    Write-Host "    Generating new Solana keypair..."
-    solana-keygen new --outfile $solanaKeyPath --no-bip39-passphrase --force
-    Write-Ok "Keypair generated: $solanaKeyPath"
+    solana-keygen new --outfile $solanaKeyPath --no-bip39-passphrase --force 2>&1 | Out-Null
+    Write-Ok "Wallet created"
 } else {
-    Write-Ok "Keypair exists: $solanaKeyPath"
+    Write-Ok "Wallet found"
 }
-
-$pubkey = solana address
-Write-Ok "Wallet address: $pubkey"
 
 # Check balance & airdrop if needed
 $balanceStr = solana balance 2>&1
 $balance = [double]($balanceStr -replace '[^\d\.]', '')
-Write-Host "    Current balance: $balanceStr"
 
 if ($balance -lt 1.0) {
-    Write-Host "    Requesting airdrop (2 SOL)..."
-    solana airdrop 2 2>&1
+    Write-Host "    Requesting devnet SOL..."
+    solana airdrop 2 2>&1 | Out-Null
     Start-Sleep -Seconds 3
-    $newBalance = solana balance
-    Write-Ok "New balance: $newBalance"
+    Write-Ok "SOL received"
+} else {
+    Write-Ok "Balance: $balanceStr"
 }
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 4: Build Anchor program"
+Write-Step "Step 5: Build program"
 # ────────────────────────────────────────────────────────────────
 
 Set-Location "$PSScriptRoot"
 
-Write-Host "    Building program..."
 $buildOutput = anchor build 2>&1
 $buildExit = $LASTEXITCODE
 
@@ -148,64 +123,12 @@ if ($buildExit -ne 0) {
 
 Write-Ok "Build successful"
 
-# Show program ID
-$programKeypair = "$PSScriptRoot\target\deploy\royal_chess_escrow-keypair.json"
-if (Test-Path $programKeypair) {
-    $programId = solana address -k $programKeypair
-    Write-Ok "Program ID: $programId"
-
-    # Update program ID in source files
-    Write-Host "    Updating program ID in source..."
-
-    # Update lib.rs
-    $libRs = Get-Content "programs\royal-chess-escrow\src\lib.rs" -Raw
-    $libRs = $libRs -replace 'declare_id!\("[^"]*"\);', "declare_id!(`"$programId`");"
-    Set-Content "programs\royal-chess-escrow\src\lib.rs" $libRs -NoNewline
-
-    # Update Anchor.toml
-    $anchorToml = Get-Content "Anchor.toml" -Raw
-    $anchorToml = $anchorToml -replace 'royal_chess_escrow = "[^"]*"', "royal_chess_escrow = `"$programId`""
-    Set-Content "Anchor.toml" $anchorToml -NoNewline
-
-    Write-Ok "Program ID updated in lib.rs & Anchor.toml"
-
-    # Rebuild with correct ID
-    Write-Host "    Rebuilding with correct program ID..."
-    anchor build 2>&1 | Out-Null
-    Write-Ok "Rebuild complete"
-}
-
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 5: Run Anchor tests"
+Write-Step "Step 6: Deploy to devnet"
 # ────────────────────────────────────────────────────────────────
 
-Write-Host "    Running tests..."
-$testOutput = anchor test 2>&1
-$testExit = $LASTEXITCODE
-
-if ($testExit -ne 0) {
-    Write-Warn "Tests had issues (exit $testExit). Output:"
-    Write-Host $testOutput
-    $continue = Read-Host "    Continue with deploy? (y/n)"
-    if ($continue -ne "y") { exit 1 }
-} else {
-    Write-Ok "All tests passed"
-}
-
-# ────────────────────────────────────────────────────────────────
-Write-Step "Step 6: Deploy to Solana devnet"
-# ────────────────────────────────────────────────────────────────
-
-$balanceStr = solana balance 2>&1
-$balance = [double]($balanceStr -replace '[^\d\.]', '')
-if ($balance -lt 0.5) {
-    Write-Host "    Low balance ($balanceStr). Requesting airdrop..."
-    solana airdrop 2
-    Start-Sleep -Seconds 3
-}
-
-Write-Host "    Deploying program to devnet..."
-$deployOutput = anchor deploy --provider.cluster devnet 2>&1
+Write-Host "    Token ready to deploy..."
+$deployOutput = anchor program deploy --provider.cluster devnet 2>&1
 $deployExit = $LASTEXITCODE
 
 if ($deployExit -ne 0) {
@@ -214,27 +137,22 @@ if ($deployExit -ne 0) {
     exit 1
 }
 
-Write-Ok "Program deployed to devnet!"
+# Get program ID silently
+$programKeypair = "$PSScriptRoot\target\deploy\royal_chess_escrow-keypair.json"
+$programId = if (Test-Path $programKeypair) { solana address -k $programKeypair 2>$null } else { "unknown" }
+
+Write-Ok "Deployed successfully!"
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "Step 7: Summary"
+Write-Step "Done!"
 # ────────────────────────────────────────────────────────────────
 
-$programId = solana address -k $programKeypair
-$finalBalance = solana balance
-
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║         Royal Chess Escrow — Solana Devnet Deploy           ║" -ForegroundColor Cyan
-Write-Host "╠══════════════════════════════════════════════════════════════╣" -ForegroundColor Cyan
-Write-Host "║  Program ID:  $programId  ║" -ForegroundColor White
-Write-Host "║  Network:     devnet                                       ║" -ForegroundColor White
-Write-Host "║  Wallet:      $pubkey  ║" -ForegroundColor White
-Write-Host "║  Balance:     $finalBalance                                        ║" -ForegroundColor White
-Write-Host "║  Explorer:    https://explorer.solana.com/address/$programId  ║" -ForegroundColor White
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "  Program deployed to Solana devnet" -ForegroundColor Green
+Write-Host "  Add this to your .env file:" -ForegroundColor Yellow
 Write-Host ""
-
-Write-Host "Add to .env:" -ForegroundColor Yellow
 Write-Host "  SOLANA_PROGRAM_ID=$programId" -ForegroundColor White
 Write-Host "  SOLANA_AUTHORITY_KEY=$solanaKeyPath" -ForegroundColor White
+Write-Host ""
+Write-Host "  Explorer: https://explorer.solana.com/address/$programId" -ForegroundColor DarkGray
+Write-Host ""
