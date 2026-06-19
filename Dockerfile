@@ -1,33 +1,33 @@
 FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-# Copy package files
+# ─── Install Dependencies ───────────────────────────────────────
+FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/frontend/package.json ./packages/frontend/
+RUN pnpm install --ignore-scripts
 
-# Install pnpm & deps
-RUN corepack enable && corepack prepare pnpm@9 --activate
-RUN pnpm install 2>&1 || npm install --legacy-peer-deps
-
-# ─── Backend Build ──────────────────────────────────────────────
-FROM base AS backend-build
+# ─── Build Backend ───────────────────────────────────────────────
+FROM deps AS backend-build
 COPY packages/backend/ ./packages/backend/
-RUN cd packages/backend && npx prisma generate && npx tsc
+RUN cd packages/backend && npx prisma generate && ./node_modules/.bin/tsc
 
-# ─── Frontend Build ─────────────────────────────────────────────
-FROM base AS frontend-build
+# ─── Build Frontend ──────────────────────────────────────────────
+FROM deps AS frontend-build
 COPY packages/frontend/ ./packages/frontend/
-RUN cd packages/frontend && npx next build
+RUN cd packages/frontend && ./node_modules/.bin/next build
 
 # ─── Backend Runtime ────────────────────────────────────────────
 FROM node:20-alpine AS backend
+RUN corepack enable && corepack prepare pnpm@9 --activate
 ENV NODE_ENV=production
 WORKDIR /app/packages/backend
-COPY --from=backend-build /app/node_modules /app/node_modules
+COPY --from=deps /app/node_modules /app/node_modules
 COPY --from=backend-build /app/packages/backend/dist ./dist
 COPY --from=backend-build /app/packages/backend/prisma ./prisma
-COPY --from=backend-build /app/packages/backend/node_modules ./node_modules 2>/dev/null || true
+COPY --from=backend-build /app/packages/backend/package.json ./
 EXPOSE 3001
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
 
@@ -35,9 +35,9 @@ CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
 FROM node:20-alpine AS frontend
 ENV NODE_ENV=production
 WORKDIR /app/packages/frontend
+COPY --from=deps /app/node_modules /app/node_modules
 COPY --from=frontend-build /app/packages/frontend/.next ./.next
 COPY --from=frontend-build /app/packages/frontend/public ./public
-COPY --from=frontend-build /app/packages/frontend/node_modules ./node_modules
 COPY --from=frontend-build /app/packages/frontend/package.json ./
 COPY --from=frontend-build /app/packages/frontend/next.config.js ./
 EXPOSE 3000
