@@ -1,0 +1,16 @@
+node_modules
+*/node_modules
+**/node_modules
+.git
+.next
+dist
+target
+*.log
+.env
+.env.*
+!.env.example
+packages/contracts/solana/target
+packages/contracts/evm/node_modules
+packages/contracts/evm/artifacts
+packages/contracts/evm/cache
+packages/contracts/evm/.openzeppelin

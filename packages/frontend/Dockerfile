@@ -1,28 +1,31 @@
-FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@9 --activate
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install dependencies
-FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/backend/package.json ./packages/backend/
-COPY packages/frontend/package.json ./packages/frontend/
-RUN pnpm install --no-frozen-lockfile
+# Build-time env vars (Coolify passes these as --build-arg)
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ARG NEXT_PUBLIC_WS_URL=ws://localhost:3001
+ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
 
-# Build frontend
-FROM deps AS build
-COPY packages/frontend/ ./packages/frontend/
-RUN cd packages/frontend && pnpm build
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 
-# Run
-FROM base AS runtime
-ENV NODE_ENV=production
-WORKDIR /app/packages/frontend
-COPY --from=build /app/packages/frontend/.next ./.next
-COPY --from=build /app/packages/frontend/public ./public
-COPY --from=build /app/packages/frontend/node_modules ./node_modules
-COPY --from=build /app/packages/frontend/package.json ./
-COPY --from=build /app/packages/frontend/next.config.js ./
+# Install deps
+COPY package.json ./
+RUN npm install --legacy-peer-deps
+
+# Copy source & build
+COPY . .
+RUN npm run build
+
+# ─── Runtime ────────────────────────────────────────────────────
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/next.config.js ./
 
 EXPOSE 3000
-CMD ["pnpm", "start"]
+CMD ["npx", "next", "start"]
