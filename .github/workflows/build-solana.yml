@@ -13,40 +13,78 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Solana CLI
+      - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.7/install)" 2>&1 | tail -1
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.7/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Anchor CLI
+      - name: Register Solana Rust toolchain
         run: |
-          cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli --locked 2>&1 | tail -3
+          SOLANA_RUST="$HOME/.local/share/solana/install/active_release/bin/platform-tools-sdk/sbf/dependencies/rust"
+          # Solana CLI installs platform-tools on first cargo-build-sbf call
+          # Trigger installation first
+          solana --version
+          # Wait for platform-tools to be available
+          for i in {1..30}; do
+            if [ -d "$SOLANA_RUST" ]; then break; fi
+            sleep 1
+          done
+          if [ -d "$SOLANA_RUST" ]; then
+            rustup toolchain link solana "$SOLANA_RUST"
+            echo "Solana Rust: $(cargo +solana --version 2>/dev/null || echo 'linked but not testable')"
+          else
+            echo "WARNING: Solana Rust not found at $SOLANA_RUST"
+          fi
+
+      - name: Install Rust 1.79 (for Anchor CLI)
+        uses: dtolnay/rust-toolchain@1.79.0
+
+      - name: Install Anchor CLI (locked deps)
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli --locked
 
       - name: Configure Solana
         run: |
-          solana config set --url devnet 2>&1 | tail -1
-          solana-keygen new --no-bip39-passphrase --force --outfile ~/.config/solana/id.json 2>&1 | tail -1
+          solana config set --url devnet
+          solana-keygen new --no-bip39-passphrase --force --outfile ~/.config/solana/id.json
+
+      - name: Generate lockfile with Solana Rust 1.79
+        working-directory: packages/contracts/solana
+        run: |
+          rm -f Cargo.lock
+          # Generate lockfile using Solana's Rust 1.79
+          # This resolves ONLY to versions compatible with Rust 1.79
+          if cargo +solana generate-lockfile 2>/dev/null; then
+            echo "Generated lockfile with Solana Rust 1.79"
+          else
+            echo "Falling back to standard cargo generate-lockfile"
+            cargo generate-lockfile
+            # Pin problematic crates
+            cargo update -p blake3 --precise 1.6.0 2>/dev/null || true
+            cargo update -p unicode-segmentation --precise 1.12.0 2>/dev/null || true
+            cargo update -p zeroize_derive --precise 1.4.2 2>/dev/null || true
+            cargo update -p proc-macro-crate@3.5.0 --precise 3.2.0 2>/dev/null || true
+            cargo update -p wit-bindgen --precise 0.36.0 2>/dev/null || true
+            cargo update -p hashbrown --precise 0.15.2 2>/dev/null || true
+          fi
+          echo "=== Lockfile versions ==="
+          for pkg in blake3 block-buffer indexmap hashbrown wit-bindgen unicode-segmentation; do
+            ver=$(grep -A2 "name = \"$pkg\"" Cargo.lock | grep "version" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            echo "  $pkg = $ver"
+          done
 
       - name: Build program
         working-directory: packages/contracts/solana
         run: |
-          rm -f Cargo.lock
-          anchor build 2>&1 | tail -5
+          anchor build
+          ls -la target/deploy/
 
-      - name: Get program info
+      - name: Get Program ID
         working-directory: packages/contracts/solana
-        id: info
         run: |
-          PROGRAM_ID=$(solana address -k target/deploy/royal_chess_escrow-keypair.json 2>/dev/null)
-          echo "program_id=$PROGRAM_ID" >> $GITHUB_OUTPUT
-          echo ""
-          echo "=== Token ready to deploy ==="
-          echo "  Program ID: $PROGRAM_ID"
-          echo "  Network:    devnet"
-          echo ""
+          PROGRAM_ID=$(solana address -k target/deploy/royal_chess_escrow-keypair.json)
+          echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
+          echo "Program ID: $PROGRAM_ID"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
