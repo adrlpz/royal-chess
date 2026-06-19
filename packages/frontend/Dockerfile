@@ -2,14 +2,14 @@ FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-# Install dependencies
+# Install ALL workspace dependencies
 FROM base AS deps
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/backend/package.json ./packages/backend/
 COPY packages/frontend/package.json ./packages/frontend/
-COPY pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile --filter @royalchess/frontend...
+RUN pnpm install --frozen-lockfile
 
-# Build
+# Build frontend
 FROM deps AS build
 COPY packages/frontend/ ./packages/frontend/
 RUN cd packages/frontend && pnpm build
