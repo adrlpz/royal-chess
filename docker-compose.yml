@@ -26,8 +26,8 @@ services:
   # ─── Backend ────────────────────────────────────────────────────
   backend:
     build:
-      context: ./packages/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: packages/backend/Dockerfile
     ports:
       - "3001:3001"
     environment:
@@ -54,8 +54,8 @@ services:
   # ─── Frontend ───────────────────────────────────────────────────
   frontend:
     build:
-      context: ./packages/frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: packages/frontend/Dockerfile
     ports:
       - "3000:3000"
     environment:
