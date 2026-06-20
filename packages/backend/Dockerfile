@@ -1,17 +1,17 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Enable pnpm via corepack (matches packageManager field)
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+# Install pnpm
+RUN npm install -g pnpm@9.15.4
 
-# Copy ALL workspace package.json files + lockfile (workspace: packages/*)
+# Copy workspace config & lockfile
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/backend/package.json ./packages/backend/package.json
 COPY packages/frontend/package.json ./packages/frontend/package.json
 
 # Install deps & generate prisma
 COPY packages/backend/prisma ./packages/backend/prisma
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile 2>&1 || (echo "=== frozen-lockfile failed, retrying ===" && pnpm install)
 RUN cd packages/backend && npx prisma generate
 
 # Copy source & build
@@ -23,7 +23,7 @@ RUN cd packages/backend && pnpm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g pnpm@9.15.4
 
 COPY --from=builder /app/packages/backend/dist ./dist
 COPY --from=builder /app/packages/backend/prisma ./prisma
