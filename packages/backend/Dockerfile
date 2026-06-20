@@ -1,8 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@9.15.4
+# Install pnpm + native build tools
+RUN npm install -g pnpm@9.15.4 && apk add --no-cache python3 make g++
 
 # Copy workspace config & lockfile
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -11,7 +11,7 @@ COPY packages/frontend/package.json ./packages/frontend/package.json
 
 # Install deps & generate prisma
 COPY packages/backend/prisma ./packages/backend/prisma
-RUN pnpm install --frozen-lockfile 2>&1 || (echo "=== frozen-lockfile failed, retrying ===" && pnpm install)
+RUN pnpm install --frozen-lockfile
 RUN cd packages/backend && npx prisma generate
 
 # Copy source & build
@@ -22,8 +22,6 @@ RUN cd packages/backend && pnpm run build
 # ─── Runtime ────────────────────────────────────────────────────
 FROM node:20-alpine
 WORKDIR /app
-
-RUN npm install -g pnpm@9.15.4
 
 COPY --from=builder /app/packages/backend/dist ./dist
 COPY --from=builder /app/packages/backend/prisma ./prisma

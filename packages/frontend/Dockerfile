@@ -1,8 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install pnpm (corepack can be flaky in Alpine)
-RUN npm install -g pnpm@9.15.4
+# Install pnpm + native build tools
+RUN npm install -g pnpm@9.15.4 && apk add --no-cache python3 make g++
 
 # Build-time env vars (Coolify passes these as --build-arg)
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
@@ -19,7 +19,7 @@ COPY packages/backend/package.json ./packages/backend/package.json
 COPY packages/frontend/package.json ./packages/frontend/package.json
 
 # Install deps
-RUN pnpm install --frozen-lockfile 2>&1 || (echo "=== pnpm install failed, retrying without --frozen-lockfile ===" && pnpm install)
+RUN pnpm install --frozen-lockfile
 
 # Copy source & build
 COPY packages/frontend ./packages/frontend
@@ -28,8 +28,6 @@ RUN cd packages/frontend && pnpm run build
 # ─── Runtime ────────────────────────────────────────────────────
 FROM node:20-alpine
 WORKDIR /app
-
-RUN npm install -g pnpm@9.15.4
 
 COPY --from=builder /app/packages/frontend/.next ./.next
 COPY --from=builder /app/packages/frontend/public ./public
