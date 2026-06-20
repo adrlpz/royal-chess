@@ -4,11 +4,12 @@ WORKDIR /app
 # Enable pnpm via corepack (matches packageManager field)
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
-# Copy workspace config & lockfile first
+# Copy ALL workspace package.json files + lockfile (workspace: packages/*)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/backend/package.json ./packages/backend/package.json
+COPY packages/frontend/package.json ./packages/frontend/package.json
 
-# Install deps
+# Install deps & generate prisma
 COPY packages/backend/prisma ./packages/backend/prisma
 RUN pnpm install --frozen-lockfile
 RUN cd packages/backend && npx prisma generate
