@@ -1,8 +1,8 @@
-FROM node:20-alpine AS builder
+FROM node:20 AS builder
 WORKDIR /app
 
-# Install pnpm + native build tools
-RUN npm install -g pnpm@9.15.4 && apk add --no-cache python3 make g++
+# Install pnpm
+RUN npm install -g pnpm@9.15.4
 
 # Build-time env vars (Coolify passes these as --build-arg)
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
@@ -26,7 +26,7 @@ COPY packages/frontend ./packages/frontend
 RUN cd packages/frontend && pnpm run build
 
 # ─── Runtime ────────────────────────────────────────────────────
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
 
 COPY --from=builder /app/packages/frontend/.next ./.next

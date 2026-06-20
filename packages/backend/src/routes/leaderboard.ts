@@ -22,7 +22,7 @@ export function leaderboardRouter(prisma: PrismaClient): Router {
         },
       });
 
-      const ranked = players.map((p, i) => ({
+      const ranked = players.map((p: any, i: number) => ({
         rank: offset + i + 1,
         ...p,
         totalGames: p.wins + p.losses + p.draws,

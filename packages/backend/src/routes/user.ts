@@ -59,7 +59,7 @@ export function userRouter(prisma: PrismaClient): Router {
   router.get("/:id", async (req: Request, res: Response) => {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: req.params.id },
+        where: { id: String(req.params.id) },
         select: {
           id: true, walletAddress: true, username: true,
           elo: true, wins: true, losses: true, draws: true,

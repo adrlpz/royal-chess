@@ -1,8 +1,8 @@
-FROM node:20-alpine AS builder
+FROM node:20 AS builder
 WORKDIR /app
 
-# Install pnpm + native build tools
-RUN npm install -g pnpm@9.15.4 && apk add --no-cache python3 make g++
+# Install pnpm
+RUN npm install -g pnpm@9.15.4
 
 # Copy workspace config & lockfile
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -20,8 +20,10 @@ COPY packages/backend/tsconfig.json ./packages/backend/tsconfig.json
 RUN cd packages/backend && pnpm run build
 
 # ─── Runtime ────────────────────────────────────────────────────
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/packages/backend/dist ./dist
 COPY --from=builder /app/packages/backend/prisma ./prisma

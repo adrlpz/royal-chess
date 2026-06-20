@@ -62,7 +62,7 @@ export class ChessEngine {
     const isGameOver = this.chess.isGameOver();
     const isCheckmate = this.chess.isCheckmate();
     const isDraw = this.chess.isDraw();
-    const isStalemate = this.chess.isStalemated();
+    const isStalemate = this.chess.isStalemate();
     const isThreefoldRepetition = this.chess.isThreefoldRepetition();
     const isInsufficientMaterial = this.chess.isInsufficientMaterial();
     const isDrawByFiftyMoves = this.chess.isDrawByFiftyMoves();

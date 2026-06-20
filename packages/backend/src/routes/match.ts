@@ -9,7 +9,7 @@ export function matchRouter(prisma: PrismaClient): Router {
   router.get("/:id", async (req: Request, res: Response) => {
     try {
       const match = await prisma.match.findUnique({
-        where: { id: req.params.id },
+        where: { id: String(req.params.id) },
         include: {
           player1: { select: { id: true, walletAddress: true, username: true, elo: true } },
           player2: { select: { id: true, walletAddress: true, username: true, elo: true } },
@@ -33,8 +33,8 @@ export function matchRouter(prisma: PrismaClient): Router {
       const matches = await prisma.match.findMany({
         where: {
           OR: [
-            { player1Id: req.params.userId },
-            { player2Id: req.params.userId },
+            { player1Id: String(req.params.userId) },
+            { player2Id: String(req.params.userId) },
           ],
         },
         orderBy: { createdAt: "desc" },

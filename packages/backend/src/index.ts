@@ -15,7 +15,7 @@ import { leaderboardRouter } from "./routes/leaderboard.js";
 const prisma = new PrismaClient();
 const matchmaking = new MatchmakingService();
 
-const app = express();
+const app: express.Express = express();
 const server = http.createServer(app);
 
 const io = new SocketIO(server, {
