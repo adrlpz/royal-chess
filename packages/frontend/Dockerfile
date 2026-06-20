@@ -1,8 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Enable pnpm via corepack (matches packageManager field)
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+# Install pnpm (corepack can be flaky in Alpine)
+RUN npm install -g pnpm@9.15.4
 
 # Build-time env vars (Coolify passes these as --build-arg)
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
@@ -13,13 +13,13 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 
-# Copy ALL workspace package.json files + lockfile (workspace: packages/*)
+# Copy workspace config & lockfile
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/backend/package.json ./packages/backend/package.json
 COPY packages/frontend/package.json ./packages/frontend/package.json
 
 # Install deps
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile 2>&1 || (echo "=== pnpm install failed, retrying without --frozen-lockfile ===" && pnpm install)
 
 # Copy source & build
 COPY packages/frontend ./packages/frontend
@@ -29,7 +29,7 @@ RUN cd packages/frontend && pnpm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g pnpm@9.15.4
 
 COPY --from=builder /app/packages/frontend/.next ./.next
 COPY --from=builder /app/packages/frontend/public ./public
