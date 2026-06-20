@@ -15,7 +15,9 @@
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
     "@solana/wallet-adapter-solflare": "^0.6.28",
+    "@solana/wallet-adapter-wallets": "^0.19.38",
     "@solana/web3.js": "^1.95.0",
+    "@tanstack/react-query": "^5.60.0",
     "chess.js": "^1.0.0",
     "chessboardjsx": "^2.4.7",
     "next": "^14.2.0",
@@ -24,8 +26,7 @@
     "siwe": "^2.3.2",
     "socket.io-client": "^4.8.0",
     "viem": "^2.21.0",
-    "wagmi": "^2.14.0",
-    "@tanstack/react-query": "^5.60.0"
+    "wagmi": "^2.14.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
